@@ -1,13 +1,29 @@
 import express from 'express'
+import session from 'express-session'
+import cookieParser from 'cookie-parser';
 
 const app = express();
 
+app.use(session({
+    secret: 'M1nh4Chav3S3cr3t4',
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+        maxAge: 1000 * 60 * 30
+    }
+}))
+
+app.use(cookieParser());
+
 app.use(express.urlencoded({ extended: true }));
+
+app.use(express.static('./paginas/public'))
 
 const porta = 3000
 const host = "0.0.0.0";
 
 var listaAlunos = [];
+//var usuarioAutenticado = false;
 
 function cadastroAlunoView(req, res) {
     res.send(`
@@ -86,9 +102,14 @@ function cadastroAlunoView(req, res) {
                 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
             </html>
     `);
+    resp.end();
 }
 
 function menuView(req, res) {
+    const dataHoraUltimoLogin = req.cookies['dataHoraUltimoLogin'];
+    if(!dataHoraUltimoLogin){
+        dataHoraUltimoLogin='';
+    }
     res.send(`
             <html>
             <head>
@@ -96,16 +117,22 @@ function menuView(req, res) {
                 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
             </head>
             <body>
-                <nav class="navbar navbar-expand-lg bg-body-tertiary">
+                    <nav class="navbar navbar-expand-lg bg-body-tertiary">
                             <div class="container-fluid">
                                 <a class="navbar-brand" href="#">MENU</a>
                                 <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
                                     <div class="navbar-nav">
                                         <a class="nav-link active" aria-current="page" href="/cadastrarAluno">Cadastrar Aluno</a>
                                     </div>
+                                    <li class="nav-item">
+                                        <a class="nav-link disabled" href="#">Seu ultimo acesso foi realizado em ${dataHoraUltimoLogin}</a>
+                                    </li>
                                 </div>
                             </div>
-                </nav>`);
+                    </nav>
+                </body>
+                <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+            </html>`);
 }
 
 function cadastrarAluno(req, resp) {
@@ -293,11 +320,59 @@ function cadastrarAluno(req, resp) {
                 `);
     }
 
-    resp.end();
 }
 
-app.get('/', menuView);
-app.get('/cadastrarAluno', cadastroAlunoView);
+function autenticarUsuario(req, resp){
+    const usuario = req.body.usuario;
+    const senha = req.body.senha;
+
+    if(usuario === 'admin' && senha === '123'){
+        //usuarioAutenticado = true;
+        req.session.usuarioLogado = true;
+        resp.cookie('dataHoraUltimoLogin', new Date().toLocaleString(), {maxAge: 1000 * 60 * 60 * 24 * 30, httpOnly: true});
+        resp.redirect('/');
+    }
+    else{
+        resp.write(`
+                    <html>
+                        <head>
+                            <title>Tente novamente</title>
+                            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+                            <meta charset="utf-8">
+                        </head>
+                        <body>
+                            <div class="container w-25">
+                                <div class="alert alert-danger" role="alert">
+                                    Usuario ou senha invalidos
+                                </div>
+                                <div>
+                                    <a href="/login.html" class="btn btn-primary">Tentar Novamente</a>
+                                </div>
+                            </div>
+                        </body>
+                        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+                    </html>
+        `);
+    }
+}
+
+function verificarAutenticacao(req, resp, next){
+    if(req.session.usuarioLogado){
+        next();
+    }
+    else
+    {
+        resp.redirect('/login.html')
+    }
+}
+
+app.get('/login', (req, res) =>{
+    resp.redirect('/login.html');
+});
+
+app.post('/login', autenticarUsuario);
+app.get('/', verificarAutenticacao, menuView);
+app.get('/cadastrarAluno', verificarAutenticacao, cadastroAlunoView);
 
 app.post('/cadastrarAluno', cadastrarAluno);
 
